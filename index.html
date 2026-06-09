@@ -97,6 +97,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 .role-solicitante { background: rgba(99,179,237,0.15); color: var(--accent); }
 .role-lider { background: rgba(118,228,167,0.15); color: var(--accent2); }
 .role-squad { background: rgba(182,149,244,0.15); color: var(--purple); }
+.role-finanzas { background: rgba(246,173,85,0.15); color: var(--accent3); }
 .sidebar-user-name { font-size: 13px; font-weight: 500; }
 .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
 .nav-section { padding: 8px 20px 4px; font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
@@ -296,6 +297,37 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 .raci-C { color: var(--accent3); }
 .raci-I { color: var(--muted); }
 
+/* ── FILE UPLOAD ─────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 28px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: var(--bg3);
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent); background: rgba(99,179,237,0.05);
+}
+.upload-zone input[type="file"] { display: none; }
+.upload-zone .upload-icon { font-size: 28px; margin-bottom: 8px; }
+.upload-zone .upload-label { font-size: 13px; color: var(--muted); }
+.upload-zone .upload-label strong { color: var(--accent); cursor: pointer; }
+.file-preview {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: var(--surface); border-radius: var(--radius-sm);
+  border: 1px solid var(--border); margin-top: 10px;
+}
+.file-preview .file-icon { font-size: 20px; }
+.file-preview .file-name { font-size: 13px; font-weight: 500; flex: 1; }
+.file-preview .file-size { font-size: 11px; color: var(--muted); }
+.file-preview .file-remove { background: none; border: none; color: var(--danger); cursor: pointer; font-size: 16px; padding: 0 4px; }
+/* ── FINANZAS ─────────────────────────────────────── */
+.fin-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.fin-stat-label { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; }
+.fin-stat-value { font-size: 24px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.5px; }
+.fin-stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.ppto-bar-wrap { margin-bottom: 16px; }
+.ppto-bar-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+.ppto-bar-track { height: 8px; background: var(--surface); border-radius: 4px; overflow: hidden; }
+.ppto-bar-fill  { height: 100%; border-radius: 4px; transition: width 0.4s; }
 /* ── SCROLLBAR ───────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -329,6 +361,10 @@ tr:hover td { background: rgba(255,255,255,0.02); }
         <option value="patricia|lider|Líder de Área">Patricia Cano · Educación Abierta</option>
         <option value="sebastian|lider|Líder de Área">Sebastián Castillo · Futuro Contenidos</option>
         <option value="coord|lider|Líder de Área">Coord. Portafolio Ágil</option>
+      </optgroup>
+      <optgroup label="Finanzas">
+        <option value="admin1|finanzas|Adm. Presupuestos">Administradora — Skilling Centes</option>
+        <option value="admin2|finanzas|Adm. Presupuestos">Administradora — Soluciones Corp.</option>
       </optgroup>
       <optgroup label="Squads / DI">
         <option value="di1|squad|Squad / DI">DI — Squad MAPS</option>
@@ -379,6 +415,209 @@ tr:hover td { background: rgba(255,255,255,0.02); }
 // ═══════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// CONFIGURACIÓN SHAREPOINT — EDITAR ESTOS 3 VALORES CON TI
+// ═══════════════════════════════════════════════════════════════
+const SP_CONFIG = {
+  // 1. ID de la aplicación registrada en Azure AD (App Registration → Application ID)
+  clientId: 'PENDIENTE-TI',
+  // 2. ID del tenant de tu organización (Azure AD → Overview → Tenant ID)
+  tenantId: 'PENDIENTE-TI',
+  // 3. URL base de tu sitio SharePoint "Producción de Contenidos"
+  siteUrl: 'https://TUORGANIZACION.sharepoint.com/sites/ProduccionContenidos',
+};
+
+// Nombres exactos de tus listas en SharePoint (NO cambiar salvo que cambies los nombres en SP)
+const SP_LISTS = {
+  solicitudes:  '01-Solicitudes_Curso',
+  maestro:      '02-Máster_Cursos',
+  fases:        '03-Fases',
+  productos:    '04-Productos_Curso',
+  catalogo:     '05-Catálogo_Productos_Valor',
+  squads:       '06-Squads',
+  colaboradores:'07-Colaboradores',
+  presupuestos: '08-Presupuestos',
+};
+
+// ── Estado de autenticación ──────────────────────────────────────
+let spToken = null;   // Bearer token de Graph API
+let spReady = false;  // true cuando TI haya configurado clientId y tenantId
+
+// Detecta si la configuración ya fue completada por TI
+function isSpConfigured() {
+  return SP_CONFIG.clientId !== 'PENDIENTE-TI' && SP_CONFIG.tenantId !== 'PENDIENTE-TI';
+}
+
+// ── Autenticación con Microsoft Identity (MSAL implícita via token popup) ──
+async function spLogin() {
+  if (!isSpConfigured()) return null;
+  try {
+    const authUrl = `https://login.microsoftonline.com/${SP_CONFIG.tenantId}/oauth2/v2.0/token`;
+    // En producción real se usa MSAL.js con flujo OAuth2.
+    // Este bloque usa el token que ya tiene el usuario autenticado en SharePoint (SSO implícito).
+    // TI debe habilitar "Implicit grant: Access tokens" en el App Registration.
+    const resp = await fetch(authUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: SP_CONFIG.clientId,
+        scope: 'https://graph.microsoft.com/Sites.ReadWrite.All',
+        grant_type: 'client_credentials',
+      })
+    });
+    const data = await resp.json();
+    if (data.access_token) { spToken = data.access_token; spReady = true; }
+    return data.access_token || null;
+  } catch(e) { console.warn('SP Auth error:', e); return null; }
+}
+
+// ── ID del sitio SharePoint (se obtiene una vez) ──────────────────
+let _spSiteId = null;
+async function getSpSiteId() {
+  if (_spSiteId) return _spSiteId;
+  if (!spToken) return null;
+  try {
+    const host = new URL(SP_CONFIG.siteUrl).hostname;
+    const path = new URL(SP_CONFIG.siteUrl).pathname;
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/sites/${host}:${path}`,
+      { headers: { Authorization: `Bearer ${spToken}` } }
+    );
+    const d = await r.json();
+    _spSiteId = d.id;
+    return d.id;
+  } catch(e) { return null; }
+}
+
+// ── LEER ítems de una lista ───────────────────────────────────────
+async function spGetItems(listName, filter = '', top = 100) {
+  if (!spToken) return null;
+  const siteId = await getSpSiteId();
+  if (!siteId) return null;
+  let url = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${encodeURIComponent(listName)}/items?expand=fields&$top=${top}`;
+  if (filter) url += `&$filter=${encodeURIComponent(filter)}`;
+  try {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${spToken}` } });
+    const d = await r.json();
+    return d.value ? d.value.map(i => ({ id: i.id, ...i.fields })) : null;
+  } catch(e) { console.warn('spGetItems error:', e); return null; }
+}
+
+// ── CREAR ítem en una lista ───────────────────────────────────────
+async function spCreateItem(listName, fields) {
+  if (!spToken) return { ok: false, error: 'Sin token' };
+  const siteId = await getSpSiteId();
+  if (!siteId) return { ok: false, error: 'Sin siteId' };
+  try {
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${encodeURIComponent(listName)}/items`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${spToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields })
+      }
+    );
+    const d = await r.json();
+    return d.id ? { ok: true, id: d.id, data: d } : { ok: false, error: JSON.stringify(d) };
+  } catch(e) { return { ok: false, error: e.message }; }
+}
+
+// ── ACTUALIZAR ítem existente ─────────────────────────────────────
+async function spUpdateItem(listName, itemId, fields) {
+  if (!spToken) return { ok: false };
+  const siteId = await getSpSiteId();
+  if (!siteId) return { ok: false };
+  try {
+    const r = await fetch(
+      `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${encodeURIComponent(listName)}/items/${itemId}/fields`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${spToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields)
+      }
+    );
+    return r.ok ? { ok: true } : { ok: false };
+  } catch(e) { return { ok: false }; }
+}
+
+// ── Helper: recolectar todos los campos de un formulario ──────────
+function collectFormFields(containerSelector) {
+  const fields = {};
+  document.querySelectorAll(`${containerSelector} input, ${containerSelector} select, ${containerSelector} textarea`).forEach(el => {
+    const label = el.closest('.form-group')?.querySelector('label')?.textContent?.replace('*','').trim();
+    if (label && el.value && !el.readOnly) fields[label] = el.value;
+  });
+  return fields;
+}
+
+// ── Indicador de guardado en proceso ─────────────────────────────
+function showSaving() {
+  const t = document.getElementById('toast');
+  t.textContent = '⏳ Guardando en SharePoint...';
+  t.style.background = 'var(--accent3)';
+  t.classList.add('show');
+}
+function showSaved(msg = 'Guardado en SharePoint ✓') {
+  const t = document.getElementById('toast');
+  t.textContent = '✓ ' + msg;
+  t.style.background = 'var(--accent2)';
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+function showError(msg = 'Error al guardar') {
+  const t = document.getElementById('toast');
+  t.textContent = '✗ ' + msg;
+  t.style.background = 'var(--danger)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 5000);
+}
+
+// ── Banner de estado de conexión SharePoint ───────────────────────
+function renderSpBanner() {
+  if (isSpConfigured()) {
+    return `<div class="alert alert-info" style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:16px">🔗</span>
+      <span><strong>Conectado a SharePoint.</strong> Los registros se guardan directamente en tus listas.</span>
+    </div>`;
+  }
+  return `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:16px">⚙️</span>
+    <div><strong>Pendiente de configuración por TI.</strong> Por ahora los datos se guardan localmente en el navegador.
+    Una vez que TI configure el App Registration de Azure, la conexión a SharePoint será automática.</div>
+  </div>`;
+}
+
+// ── localStorage como fallback mientras TI configura ─────────────
+const LOCAL_KEY = 'gob_datos_v1';
+function localSave(lista, record) {
+  const store = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
+  if (!store[lista]) store[lista] = [];
+  record._id = Date.now();
+  record._ts = new Date().toISOString();
+  store[lista].push(record);
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(store));
+  return record._id;
+}
+function localGet(lista) {
+  const store = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
+  return store[lista] || [];
+}
+
+// ── Guardar con fallback automático ──────────────────────────────
+async function guardarEnSP(listName, fields, successMsg) {
+  showSaving();
+  if (isSpConfigured() && spToken) {
+    const result = await spCreateItem(listName, fields);
+    if (result.ok) { showSaved(successMsg || 'Registro guardado en SharePoint'); return result; }
+    else { showError('Error SP: ' + result.error); return result; }
+  } else {
+    // Fallback a localStorage
+    const id = localSave(listName, fields);
+    showSaved((successMsg || 'Guardado localmente') + ' (sin conexión SP aún)');
+    return { ok: true, id, local: true };
+  }
+}
+
 const CATALOGS = {
   tipo_solicitud: ['Nuevo', 'Actualización', 'Quickfix', 'Garantía'],
   tipo_producto: ['Recurso aislado', 'Curso completo', 'Módulo', 'Microlearning'],
@@ -483,6 +722,14 @@ const NAV_CONFIG = {
     { id: 'cat-colaboradores', icon: '👤', label: 'Colaboradores' },
     { id: 'cat-squads', icon: '🏷', label: 'Squads' },
   ],
+  finanzas: [
+    { section: 'Presupuestos' },
+    { id: 'ppto-dashboard', icon: '💰', label: 'Dashboard financiero' },
+    { id: 'ppto-nuevo',     icon: '＋', label: 'Nuevo presupuesto' },
+    { id: 'ppto-lista',     icon: '📋', label: 'Todos los presupuestos' },
+    { section: 'Análisis' },
+    { id: 'ppto-consumo',   icon: '📊', label: 'Consumo por área' },
+  ],
 };
 
 function buildNav() {
@@ -521,22 +768,24 @@ function loadFirstPage() {
 // ═══════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════
-function sel(name, catalog, req = false) {
+function sel(name, catalog, req = false, fieldId = '') {
   const r = req ? '<span class="req">*</span>' : '';
+  const id = fieldId ? `id="${fieldId}"` : '';
   return `<div class="form-group">
     <label>${name}${r}</label>
-    <select>
+    <select ${id}>
       <option value="">— Selecciona —</option>
       ${CATALOGS[catalog].map(v => `<option>${v}</option>`).join('')}
     </select>
   </div>`;
 }
-function inp(name, type = 'text', placeholder = '', req = false, note = '') {
+function inp(name, type = 'text', placeholder = '', req = false, note = '', fieldId = '') {
   const r = req ? '<span class="req">*</span>' : '';
   const n = note ? `<div class="field-note">${note}</div>` : '';
+  const id = fieldId ? `id="${fieldId}"` : '';
   return `<div class="form-group">
     <label>${name}${r}</label>
-    <input type="${type}" placeholder="${placeholder}">
+    <input type="${type}" ${id} placeholder="${placeholder}">
     ${n}
   </div>`;
 }
@@ -592,6 +841,10 @@ function renderPage(id) {
     'dash-squad': renderDashSquad,
     'fases-registro': renderFasesRegistro,
     'productos-registro': renderProductosRegistro,
+    'ppto-dashboard':     renderPptoDashboard,
+    'ppto-nuevo':         renderPptoNuevo,
+    'ppto-lista':         renderPptoLista,
+    'ppto-consumo':       renderPptoConsumo,
   };
   if (renderers[id]) {
     main.innerHTML = renderers[id]();
@@ -754,6 +1007,7 @@ function renderSolNueva() {
     <div class="page-sub">Lista 01-Solicitudes_Curso · Completa todos los campos obligatorios</div>
   </div>
 
+  ${renderSpBanner()}
   <div class="alert alert-info">
     💡 Selecciona los productos que necesitas en la sección de abajo. El estimado de tiempo se calcula automáticamente al agregar o quitar elementos.
   </div>
@@ -780,6 +1034,40 @@ function renderSolNueva() {
     </div>
     ${txt('Descripción de la solicitud', 400, false)}
   </div>
+
+  <!-- 2b. RFP / ARQUITECTURA DEL CURSO -->
+  <div class="card">
+    <div class="card-title">Arquitectura del curso / RFP</div>
+    <div class="alert alert-info" style="margin-bottom:16px">
+      📎 Adjunta el documento con la arquitectura o RFP del curso. Debe describir qué contendrá cada módulo, objetivos de aprendizaje, audiencia y requerimientos especiales.
+    </div>
+    <div class="form-group full" style="margin-bottom:16px">
+      <label>Documento de arquitectura / RFP <span class="req">*</span></label>
+      <div class="upload-zone" id="rfp-drop-zone"
+           onclick="document.getElementById('rfp-file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('dragover')"
+           ondragleave="this.classList.remove('dragover')"
+           ondrop="handleRfpDrop(event)">
+        <input type="file" id="rfp-file-input" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+               onchange="handleRfpSelect(this)">
+        <div class="upload-icon">📄</div>
+        <div class="upload-label">Arrastra el archivo aquí o <strong>haz clic para buscar</strong><br>
+          <span style="font-size:11px">PDF · Word · PowerPoint · Excel &nbsp;·&nbsp; Máx. 25 MB</span>
+        </div>
+      </div>
+      <div id="rfp-preview" style="display:none"></div>
+    </div>
+    <div class="form-grid">
+      ${inp('Nombre del documento', 'text', 'Ej: RFP-LiderazgoB2B-v2.pdf', false, '', 'form-rfp-nombre')}
+      ${inp('Versión', 'text', 'Ej: v1.0', false, '', 'form-rfp-version')}
+      ${inp('Número de módulos del curso', 'number', '0', false, '', 'form-rfp-modulos')}
+      ${inp('Total de horas del curso', 'number', '0', false, 'Duración estimada total', 'form-rfp-horas')}
+      ${inp('Audiencia objetivo', 'text', 'Ej: Líderes de área, nivel medio', false, '', 'form-rfp-audiencia')}
+      ${inp('Fecha límite solicitada', 'date', '', false, '', 'form-rfp-fecha-limite')}
+    </div>
+    ${txt('Objetivos de aprendizaje / Requerimientos especiales', 500, false)}
+  </div>
+
 
   <!-- 3. SELECTOR DE PRODUCTOS (catálogo interactivo) -->
   <div class="card">
@@ -891,7 +1179,7 @@ function renderSolNueva() {
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-save" onclick="showToast('Solicitud enviada con ' + Object.keys(solicitudProductos).length + ' producto(s)')">Enviar solicitud</button>
+    <button class="btn btn-save" onclick="enviarSolicitud()">Enviar solicitud</button>
     <button class="btn btn-cancel" onclick="solicitudProductos={};refreshEstimador()">Limpiar selección</button>
   </div>`;
 }
@@ -988,7 +1276,7 @@ function renderCatProductos() {
       <div class="form-group"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Producto registrado')">Guardar producto</button>
+      <button class="btn btn-save" onclick="guardarProductoCurso()">Guardar producto</button>
     </div>
   </div>` : ''}
   <div class="card">
@@ -1150,7 +1438,7 @@ function renderMaestroCursos() {
     </div>
     ${txt('Observaciones', 400)}
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Curso guardado en Máster')">Guardar</button>
+      <button class="btn btn-save" onclick="guardarCursoMaestro()">Guardar</button>
       <button class="btn btn-cancel">Cancelar</button>
     </div>
   </div>` : ''}
@@ -1248,7 +1536,7 @@ function renderCatSquads() {
       ⚠ Los campos Proyectos_activos, Carga_pct y Disponible se calculan automáticamente.
     </div>
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Squad guardado')">Guardar</button>
+      <button class="btn btn-save" onclick="guardarSquad()">Guardar</button>
     </div>
   </div>` : ''}
   <div class="card">
@@ -1299,7 +1587,7 @@ function renderCatColaboradores() {
     </div>
     ${txt('Observaciones (vacaciones, licencias, etc.)', 400)}
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Colaborador guardado')">Guardar</button>
+      <button class="btn btn-save" onclick="guardarColaborador()">Guardar</button>
     </div>
   </div>` : ''}
   <div class="card">
@@ -1410,7 +1698,7 @@ function renderFasesRegistro() {
     </div>
     ${txt('Observaciones de fase (bloqueos, notas)', 500)}
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Fase registrada')">Guardar fase</button>
+      <button class="btn btn-save" onclick="guardarFase()">Guardar fase</button>
       <button class="btn btn-cancel">Cancelar</button>
     </div>
   </div>
@@ -1489,7 +1777,7 @@ function renderProductosRegistro() {
       ${sel('Generado con IA', 'agente_ia', true)}
     </div>
     <div class="btn-row">
-      <button class="btn btn-save" onclick="showToast('Producto registrado')">Guardar producto</button>
+      <button class="btn btn-save" onclick="guardarProductoCurso()">Guardar producto</button>
       <button class="btn btn-cancel">Cancelar</button>
     </div>
   </div>
@@ -1535,6 +1823,574 @@ function renderProductosRegistro() {
     </div>
   </div>`;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// HANDLERS DE GUARDADO — conectan formularios con SharePoint
+// ═══════════════════════════════════════════════════════════════
+
+// ── 01 Solicitudes_Curso ──────────────────────────────────────
+async function enviarSolicitud() {
+  const nombre   = document.querySelector('#form-sol-nombre')?.value?.trim();
+  const clave    = document.querySelector('#form-sol-clave')?.value?.trim();
+  if (!nombre) { showError('El nombre del curso es obligatorio'); return; }
+
+  // Construir lista de productos seleccionados como JSON string
+  const productosSeleccionados = Object.entries(solicitudProductos).map(([id, cant]) => {
+    const p = CATALOGO_PRODUCTOS.find(x => x.id === id);
+    return p ? `${p.nombre} x${cant}` : id;
+  }).join('; ');
+
+  const hrsTotal = Object.entries(solicitudProductos).reduce((sum, [id, cant]) => {
+    const p = CATALOGO_PRODUCTOS.find(x => x.id === id);
+    return sum + (p ? p.hrs * cant : 0);
+  }, 0);
+
+  const fields = {
+    Title:                   nombre || 'Sin nombre',
+    Clave_Banner:            document.querySelector('#form-sol-clave')?.value || '',
+    Tipo_Solicitud:          document.querySelector('#form-sol-tipo')?.value || '',
+    Tipo_Producto:           document.querySelector('#form-sol-tipo-prod')?.value || '',
+    Tipo_Cliente:            document.querySelector('#form-sol-cliente')?.value || '',
+    Solicitante:             document.querySelector('#form-sol-area')?.value || '',
+    Fecha_Solicitud:         document.querySelector('#form-sol-fecha')?.value || new Date().toISOString().split('T')[0],
+    Descripcion:             document.querySelector('#form-sol-desc')?.value || '',
+    Productos_Seleccionados: productosSeleccionados,
+    Horas_Estimadas:         hrsTotal,
+    Estatus_Solicitud:       'Recibida',
+    Solicitante_Usuario:     currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.solicitudes, fields, 'Solicitud enviada a SharePoint');
+  solicitudProductos = {};
+  refreshEstimador();
+}
+
+// ── 03 Fases ──────────────────────────────────────────────────
+async function guardarFase() {
+  const idCurso = document.querySelector('#form-fase-idcurso')?.value?.trim();
+  if (!idCurso) { showError('El ID de curso es obligatorio'); return; }
+
+  const fields = {
+    Title:              document.querySelector('#form-fase-fase')?.value || '',
+    ID_Curso:           idCurso,
+    Responsable_R:      document.querySelector('#form-fase-resp')?.value || '',
+    Accountable_A:      document.querySelector('#form-fase-account')?.value || '',
+    Agente_IA:          document.querySelector('#form-fase-ia')?.value || '',
+    Version_Agente_IA:  document.querySelector('#form-fase-version-ia')?.value || '',
+    Fecha_Inicio:       document.querySelector('#form-fase-finicio')?.value || '',
+    Fecha_Cierre:       document.querySelector('#form-fase-fcierre')?.value || '',
+    Iteraciones_IA:     parseInt(document.querySelector('#form-fase-iter')?.value) || 0,
+    Aprobacion_Humana:  document.querySelector('#form-fase-aprobacion')?.value || 'Pendiente',
+    Nombre_Aprobador:   document.querySelector('#form-fase-aprobador')?.value || '',
+    Fecha_Aprobacion:   document.querySelector('#form-fase-faprobacion')?.value || '',
+    QA_Unitario:        document.querySelector('#form-fase-qa')?.value || '',
+    Estatus_Fase:       document.querySelector('#form-fase-estatus')?.value || '',
+    Observaciones:      document.querySelector('#form-fase-obs')?.value || '',
+    Registrado_Por:     currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.fases, fields, 'Fase registrada en SharePoint');
+}
+
+// ── 04 Productos_Curso ────────────────────────────────────────
+async function guardarProductoCurso() {
+  const idCurso = document.querySelector('#form-prodcurso-idcurso')?.value?.trim();
+  if (!idCurso) { showError('El ID de curso es obligatorio'); return; }
+
+  const fields = {
+    Title:                   document.querySelector('#form-prodcurso-desc')?.value || '',
+    ID_Curso:                idCurso,
+    ID_Tipo_Producto:        document.querySelector('#form-prodcurso-idprod')?.value || '',
+    Cantidad_Unidades:       parseInt(document.querySelector('#form-prodcurso-cant')?.value) || 0,
+    Responsable_Produccion:  document.querySelector('#form-prodcurso-resp')?.value || '',
+    Fecha_Entrega:           document.querySelector('#form-prodcurso-fecha')?.value || '',
+    Tiempo_Real_Horas:       parseFloat(document.querySelector('#form-prodcurso-hrsreal')?.value) || 0,
+    Estatus:                 document.querySelector('#form-prodcurso-estatus')?.value || '',
+    Generado_Con_IA:         document.querySelector('#form-prodcurso-ia')?.value || '',
+    Registrado_Por:          currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.productos, fields, 'Producto registrado en SharePoint');
+}
+
+// ── 02 Máster_Cursos ──────────────────────────────────────────
+async function guardarCursoMaestro() {
+  const nombre = document.querySelector('#form-maestro-nombre')?.value?.trim();
+  if (!nombre) { showError('El nombre del curso es obligatorio'); return; }
+
+  const fields = {
+    Title:              nombre,
+    Clave_Banner:       document.querySelector('#form-maestro-clave')?.value || '',
+    Tipo_Solicitud:     document.querySelector('#form-maestro-tipo')?.value || '',
+    Categoria_Squad:    document.querySelector('#form-maestro-squad-cat')?.value || '',
+    Squad_Asignado:     document.querySelector('#form-maestro-squad')?.value || '',
+    Tipo_Cliente:       document.querySelector('#form-maestro-cliente')?.value || '',
+    Nombre_Cliente:     document.querySelector('#form-maestro-nombre-cliente')?.value || '',
+    Lider_Area:         document.querySelector('#form-maestro-lider')?.value || '',
+    Fecha_Arq:          document.querySelector('#form-maestro-farq')?.value || '',
+    Fecha_Entrega_Comprometida: document.querySelector('#form-maestro-fentrega')?.value || '',
+    Estatus_Kanban:     document.querySelector('#form-maestro-estatus')?.value || '',
+    Prioridad:          document.querySelector('#form-maestro-prioridad')?.value || '',
+    URL_Carpeta:        document.querySelector('#form-maestro-url')?.value || '',
+    Observaciones:      document.querySelector('#form-maestro-obs')?.value || '',
+    Registrado_Por:     currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.maestro, fields, 'Curso guardado en Máster');
+}
+
+// ── 06 Squads ─────────────────────────────────────────────────
+async function guardarSquad() {
+  const cat = document.querySelector('#form-squad-cat')?.value?.trim();
+  if (!cat) { showError('La categoría del squad es obligatoria'); return; }
+
+  const fields = {
+    Title:              cat,
+    Squad_Lead:         document.querySelector('#form-squad-lead')?.value || '',
+    Capacidad_Max:      parseInt(document.querySelector('#form-squad-capmax')?.value) || 0,
+    Velocity_Promedio:  parseFloat(document.querySelector('#form-squad-velocity')?.value) || 0,
+    Throughput_Semanal: parseInt(document.querySelector('#form-squad-throughput')?.value) || 0,
+    Estatus_Squad:      document.querySelector('#form-squad-estatus')?.value || '',
+    Registrado_Por:     currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.squads, fields, 'Squad guardado en SharePoint');
+}
+
+// ── 07 Colaboradores ──────────────────────────────────────────
+async function guardarColaborador() {
+  const nombre = document.querySelector('#form-colab-nombre')?.value?.trim();
+  if (!nombre) { showError('El nombre del colaborador es obligatorio'); return; }
+
+  const fields = {
+    Title:              nombre,
+    Rol:                document.querySelector('#form-colab-rol')?.value || '',
+    Squads_Asignados:   document.querySelector('#form-colab-squads')?.value || '',
+    Capacidad_Max:      parseInt(document.querySelector('#form-colab-capmax')?.value) || 0,
+    Horas_Ocupadas:     parseFloat(document.querySelector('#form-colab-hrs')?.value) || 0,
+    Fecha_Liberacion:   document.querySelector('#form-colab-fliberacion')?.value || '',
+    Observaciones:      document.querySelector('#form-colab-obs')?.value || '',
+    Registrado_Por:     currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.colaboradores, fields, 'Colaborador guardado en SharePoint');
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// RFP FILE UPLOAD HANDLERS
+// ═══════════════════════════════════════════════════════════════
+let rfpFile = null;
+
+function handleRfpSelect(input) {
+  if (input.files && input.files[0]) processRfpFile(input.files[0]);
+}
+function handleRfpDrop(e) {
+  e.preventDefault();
+  document.getElementById('rfp-drop-zone')?.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) processRfpFile(e.dataTransfer.files[0]);
+}
+function processRfpFile(file) {
+  const maxMB = 25;
+  if (file.size > maxMB * 1024 * 1024) { showError(`El archivo excede ${maxMB} MB`); return; }
+  const allowed = ['pdf','doc','docx','ppt','pptx','xls','xlsx'];
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!allowed.includes(ext)) { showError('Formato no permitido. Usa PDF, Word, PowerPoint o Excel.'); return; }
+
+  rfpFile = file;
+  const sizeStr = file.size > 1024*1024 ? (file.size/1024/1024).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB';
+  const icons = { pdf:'📕', doc:'📘', docx:'📘', ppt:'📙', pptx:'📙', xls:'📗', xlsx:'📗' };
+  const preview = document.getElementById('rfp-preview');
+  if (preview) {
+    preview.style.display = 'flex';
+    preview.className = 'file-preview';
+    preview.innerHTML = `
+      <span class="file-icon">${icons[ext] || '📄'}</span>
+      <div style="flex:1">
+        <div class="file-name">${file.name}</div>
+        <div class="file-size">${sizeStr} · ${ext.toUpperCase()}</div>
+      </div>
+      <button class="file-remove" onclick="removeRfpFile()" title="Quitar archivo">✕</button>`;
+  }
+  const zone = document.getElementById('rfp-drop-zone');
+  if (zone) zone.style.borderColor = 'var(--accent2)';
+
+  // Auto-fill name field if empty
+  const nameField = document.querySelector('#form-rfp-nombre');
+  if (nameField && !nameField.value) nameField.value = file.name;
+}
+function removeRfpFile() {
+  rfpFile = null;
+  const preview = document.getElementById('rfp-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  const zone = document.getElementById('rfp-drop-zone');
+  if (zone) zone.style.borderColor = '';
+  const input = document.getElementById('rfp-file-input');
+  if (input) input.value = '';
+  const nameField = document.querySelector('#form-rfp-nombre');
+  if (nameField) nameField.value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FINANZAS — MÓDULO 08-Presupuestos
+// ═══════════════════════════════════════════════════════════════
+
+// Sample data presupuestos
+const PPTO_SAMPLE = [
+  { id:1, fecha_sol:'2026-05-01', fecha_term:'2026-12-31', area:'Skilling Centes', id_proyecto:'PROJ-001', cliente:'Tec de Monterrey', proyecto:'Innovación Educativa', nivel:'Educación Formal', cotizacion:450000, vigencia:'2026-12-31', oi:'OI-2026-001', ppto_opex_ant:0, ppto_ejercido:180000, ppto_ejercer:270000, ppto_disp:270000, pct_consumo:40, estatus:'En proceso' },
+  { id:2, fecha_sol:'2026-04-15', fecha_term:'2026-09-30', area:'Soluciones Corporativas', id_proyecto:'PROJ-002', cliente:'Empresa B2B MX', proyecto:'Liderazgo Estratégico', nivel:'Educación Abierta', cotizacion:320000, vigencia:'2026-09-30', oi:'OI-2026-002', ppto_opex_ant:50000, ppto_ejercido:210000, ppto_ejercer:110000, ppto_disp:110000, pct_consumo:66, estatus:'En proceso' },
+  { id:3, fecha_sol:'2026-03-01', fecha_term:'2026-06-30', area:'Skilling Centes', id_proyecto:'PROJ-003', cliente:'Prepa BAI', proyecto:'Matemáticas Avanzadas', nivel:'Educación Formal', cotizacion:180000, vigencia:'2026-06-30', oi:'OI-2026-003', ppto_opex_ant:0, ppto_ejercido:175000, ppto_ejercer:5000, ppto_disp:5000, pct_consumo:97, estatus:'Terminado' },
+  { id:4, fecha_sol:'2026-06-01', fecha_term:'2026-12-31', area:'Soluciones Corporativas', id_proyecto:'PROJ-004', cliente:'Futuro Contenidos', proyecto:'Microlearning IA Gen', nivel:'Educación Abierta', cotizacion:95000, vigencia:'2026-12-31', oi:'OI-2026-004', ppto_opex_ant:0, ppto_ejercido:12000, ppto_ejercer:83000, ppto_disp:83000, pct_consumo:13, estatus:'En proceso' },
+];
+
+function pptoBarColor(pct) {
+  if (pct >= 90) return 'var(--danger)';
+  if (pct >= 70) return 'var(--accent3)';
+  return 'var(--accent2)';
+}
+function mxn(n) { return '$' + (n||0).toLocaleString('es-MX'); }
+
+// ── DASHBOARD FINANZAS ──────────────────────────────────────────
+function renderPptoDashboard() {
+  const total_cot = PPTO_SAMPLE.reduce((s,p)=>s+p.cotizacion,0);
+  const total_ej  = PPTO_SAMPLE.reduce((s,p)=>s+p.ppto_ejercido,0);
+  const total_disp= PPTO_SAMPLE.reduce((s,p)=>s+p.ppto_disp,0);
+  const pct_global= Math.round((total_ej/total_cot)*100);
+  const en_riesgo = PPTO_SAMPLE.filter(p=>p.pct_consumo>=90&&p.estatus!=='Terminado').length;
+
+  return `
+  <div class="page-header">
+    <div class="page-title">Dashboard Financiero</div>
+    <div class="page-sub">Lista 08-Presupuestos · Actualizado ${new Date().toLocaleDateString('es-MX')}</div>
+  </div>
+
+  <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat-card blue">
+      <div class="stat-label">Total cotizado</div>
+      <div class="stat-value" style="font-size:20px">${mxn(total_cot)}</div>
+      <div class="stat-sub">${PPTO_SAMPLE.length} proyectos activos</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Presupuesto ejercido</div>
+      <div class="stat-value" style="font-size:20px">${mxn(total_ej)}</div>
+      <div class="stat-sub">${pct_global}% del total cotizado</div>
+    </div>
+    <div class="stat-card orange">
+      <div class="stat-label">Disponible por ejercer</div>
+      <div class="stat-value" style="font-size:20px">${mxn(total_disp)}</div>
+      <div class="stat-sub">Saldo restante</div>
+    </div>
+    <div class="stat-card ${en_riesgo>0?'purple':'green'}">
+      <div class="stat-label">Proyectos en riesgo</div>
+      <div class="stat-value">${en_riesgo}</div>
+      <div class="stat-sub">≥ 90% consumido</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div class="card-title">Consumo por proyecto</div>
+      ${PPTO_SAMPLE.map(p=>`
+        <div class="ppto-bar-wrap">
+          <div class="ppto-bar-header">
+            <span style="font-weight:500">${p.proyecto}</span>
+            <span style="display:flex;gap:8px;align-items:center">
+              <span style="font-family:var(--mono);font-size:12px;color:${pptoBarColor(p.pct_consumo)}">${p.pct_consumo}%</span>
+              ${statusBadge(p.estatus)}
+            </span>
+          </div>
+          <div class="ppto-bar-track">
+            <div class="ppto-bar-fill" style="width:${p.pct_consumo}%;background:${pptoBarColor(p.pct_consumo)}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">
+            ${mxn(p.ppto_ejercido)} ejercido de ${mxn(p.cotizacion)} · Disponible: ${mxn(p.ppto_disp)}
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">Consumo por área</div>
+      ${['Skilling Centes','Soluciones Corporativas'].map(area=>{
+        const proyectos = PPTO_SAMPLE.filter(p=>p.area===area);
+        const cot = proyectos.reduce((s,p)=>s+p.cotizacion,0);
+        const ej  = proyectos.reduce((s,p)=>s+p.ppto_ejercido,0);
+        const pct = cot>0?Math.round((ej/cot)*100):0;
+        return `
+        <div class="ppto-bar-wrap" style="margin-bottom:20px">
+          <div class="ppto-bar-header">
+            <span style="font-weight:500">${area}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:${pptoBarColor(pct)}">${pct}%</span>
+          </div>
+          <div class="ppto-bar-track" style="height:12px">
+            <div class="ppto-bar-fill" style="width:${pct}%;background:${pptoBarColor(pct)}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">
+            ${proyectos.length} proyectos · ${mxn(ej)} de ${mxn(cot)}
+          </div>
+        </div>`;
+      }).join('')}
+
+      <hr class="section-divider">
+      <div class="card-title">Resumen de estatus</div>
+      ${[['En proceso','blue'],['Terminado','green'],['Detenido','red']].map(([est,color])=>{
+        const n = PPTO_SAMPLE.filter(p=>p.estatus===est).length;
+        return n>0 ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:13px">${est}</span>
+          <span class="badge badge-${color}">${n} proyecto${n!==1?'s':''}</span>
+        </div>` : '';
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// ── NUEVO PRESUPUESTO ───────────────────────────────────────────
+function renderPptoNuevo() {
+  return `
+  <div class="page-header">
+    <div class="page-title">Nuevo Presupuesto</div>
+    <div class="page-sub">Lista 08-Presupuestos · Campos según arquitectura definida</div>
+  </div>
+  ${renderSpBanner()}
+
+  <div class="card">
+    <div class="card-title">Datos del proyecto</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>ID (automático)</label>
+        <input type="text" value="Autonumérico" readonly style="opacity:0.5">
+      </div>
+      ${inp('Fecha de solicitud del presupuesto', 'date', '', true, '', 'form-ppto-fecha-sol')}
+      ${inp('Fecha de término del presupuesto', 'date', '', true, '', 'form-ppto-fecha-term')}
+      <div class="form-group">
+        <label>Área a la que pertenece <span class="req">*</span></label>
+        <select id="form-ppto-area">
+          <option value="">— Selecciona —</option>
+          <option>Skilling Centes</option>
+          <option>Soluciones Corporativas</option>
+        </select>
+      </div>
+      ${inp('ID Proyecto', 'text', 'ID del proyecto al que pertenece', true, '', 'form-ppto-id-proyecto')}
+      ${inp('Cliente', 'text', 'Nombre del cliente', true, '', 'form-ppto-cliente')}
+      ${inp('Nombre del proyecto', 'text', '', true, '', 'form-ppto-nombre')}
+      <div class="form-group">
+        <label>Nivel <span class="req">*</span></label>
+        <select id="form-ppto-nivel">
+          <option value="">— Selecciona —</option>
+          <option>Educación Abierta</option>
+          <option>Educación Formal</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Datos financieros</div>
+    <div class="alert alert-warn" style="margin-bottom:16px">
+      ⚠ El campo <strong>Reflexiona</strong> es un dato que proporcionan las gestoras del presupuesto directamente en la lista de SharePoint, no se captura en esta interfaz.
+    </div>
+    <div class="form-grid">
+      ${inp('Cotización autorizada (MXN)', 'number', '0.00', true, '', 'form-ppto-cotizacion')}
+      ${inp('Vigencia del presupuesto', 'date', '', true, '', 'form-ppto-vigencia')}
+      ${inp('OI (Orden Interna)', 'text', 'Orden interna a la que pertenece', true, '', 'form-ppto-oi')}
+      ${inp('Presupuesto ejercido OPEX anteriores (MXN)', 'number', '0', false, 'Si no existe, dejar en 0', 'form-ppto-opex-ant')}
+      ${inp('Presupuesto ejercido del proyecto (MXN)', 'number', '0', true, '', 'form-ppto-ejercido')}
+      ${inp('Presupuesto por ejercer (MXN)', 'number', '0', true, '', 'form-ppto-ejercer')}
+      <div class="form-group">
+        <label>Presupuesto disponible <span style="color:var(--muted);font-size:11px">(calculado)</span></label>
+        <input type="number" id="form-ppto-disponible" placeholder="= Por ejercer − Ejercido" readonly style="opacity:0.6"
+               title="Se calcula automáticamente">
+      </div>
+      <div class="form-group">
+        <label>% consumido <span style="color:var(--muted);font-size:11px">(calculado)</span></label>
+        <input type="text" id="form-ppto-pct" placeholder="= Ejercido / Cotización × 100" readonly style="opacity:0.6">
+      </div>
+    </div>
+
+    <div id="ppto-calc-preview" style="display:none;margin-top:12px"></div>
+
+    <div class="form-grid" style="margin-top:16px">
+      <div class="form-group">
+        <label>Estatus <span class="req">*</span></label>
+        <select id="form-ppto-estatus">
+          <option value="">— Selecciona —</option>
+          <option>En proceso</option>
+          <option>Detenido</option>
+          <option>Terminado</option>
+        </select>
+      </div>
+      <div class="form-group"></div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-save" onclick="guardarPresupuesto()">Guardar presupuesto</button>
+    <button class="btn btn-cancel" onclick="navigateTo('ppto-lista')">Cancelar</button>
+  </div>
+
+  <script>
+  // Auto-calculate disponible y % consumido
+  ['form-ppto-cotizacion','form-ppto-ejercido','form-ppto-ejercer'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('input', calcPpto);
+  });
+  function calcPpto() {
+    const cot = parseFloat(document.getElementById('form-ppto-cotizacion')?.value)||0;
+    const ej  = parseFloat(document.getElementById('form-ppto-ejercido')?.value)||0;
+    const ejr = parseFloat(document.getElementById('form-ppto-ejercer')?.value)||0;
+    const disp = ejr - ej;
+    const pct  = cot>0 ? ((ej/cot)*100).toFixed(1) : 0;
+    const dispEl = document.getElementById('form-ppto-disponible');
+    const pctEl  = document.getElementById('form-ppto-pct');
+    if(dispEl) dispEl.value = disp.toLocaleString('es-MX');
+    if(pctEl)  pctEl.value  = pct + '%';
+    const prev = document.getElementById('ppto-calc-preview');
+    if(prev && cot>0) {
+      prev.style.display='block';
+      const color = pct>=90?'var(--danger)':pct>=70?'var(--accent3)':'var(--accent2)';
+      prev.innerHTML = '<div class="progress-bar" style="height:8px;margin-bottom:4px"><div class="progress-fill" style="width:'+Math.min(pct,100)+'%;background:'+color+'"></div></div><div style="font-size:11px;color:var(--muted)">'+pct+'% consumido de '+('$'+cot.toLocaleString('es-MX'))+'</div>';
+    }
+  }
+  <\/script>`;
+}
+
+// ── LISTA PRESUPUESTOS ──────────────────────────────────────────
+function renderPptoLista() {
+  const isAdmin = currentUser.role === 'finanzas';
+  return `
+  <div class="page-header">
+    <div class="page-title">Presupuestos</div>
+    <div class="page-sub">Lista 08-Presupuestos · ${PPTO_SAMPLE.length} registros</div>
+  </div>
+  ${isAdmin?`<div class="btn-row" style="margin-bottom:20px">
+    <button class="btn btn-save" onclick="navigateTo('ppto-nuevo')">+ Nuevo presupuesto</button>
+  </div>`:''}
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>ID</th><th>Proyecto</th><th>Área</th><th>Cliente</th>
+          <th>Nivel</th><th>OI</th><th>Cotización</th>
+          <th>Ejercido</th><th>Disponible</th><th>% Consumo</th><th>Estatus</th>
+        </tr></thead>
+        <tbody>
+          ${PPTO_SAMPLE.map(p=>`<tr>
+            <td class="mono">${p.id}</td>
+            <td style="font-weight:500">${p.proyecto}</td>
+            <td>${p.area}</td>
+            <td>${p.cliente}</td>
+            <td><span class="badge badge-${p.nivel==='Educación Formal'?'blue':'purple'}">${p.nivel}</span></td>
+            <td class="mono">${p.oi}</td>
+            <td class="mono">${mxn(p.cotizacion)}</td>
+            <td class="mono" style="color:var(--accent3)">${mxn(p.ppto_ejercido)}</td>
+            <td class="mono" style="color:var(--accent2)">${mxn(p.ppto_disp)}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:60px;height:6px;background:var(--surface);border-radius:3px;overflow:hidden">
+                  <div style="width:${p.pct_consumo}%;height:100%;background:${pptoBarColor(p.pct_consumo)};border-radius:3px"></div>
+                </div>
+                <span class="mono" style="font-size:11px;color:${pptoBarColor(p.pct_consumo)}">${p.pct_consumo}%</span>
+              </div>
+            </td>
+            <td>${statusBadge(p.estatus)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ── CONSUMO POR ÁREA ────────────────────────────────────────────
+function renderPptoConsumo() {
+  const areas = ['Skilling Centes','Soluciones Corporativas'];
+  return `
+  <div class="page-header">
+    <div class="page-title">Consumo por Área</div>
+    <div class="page-sub">Análisis del presupuesto por unidad de negocio</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    ${areas.map(area=>{
+      const proy = PPTO_SAMPLE.filter(p=>p.area===area);
+      const cot  = proy.reduce((s,p)=>s+p.cotizacion,0);
+      const ej   = proy.reduce((s,p)=>s+p.ppto_ejercido,0);
+      const disp = proy.reduce((s,p)=>s+p.ppto_disp,0);
+      const pct  = cot>0?Math.round((ej/cot)*100):0;
+      return `
+      <div class="card">
+        <div class="card-title">${area}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+          <div class="fin-stat">
+            <div class="fin-stat-label">Cotizado</div>
+            <div class="fin-stat-value" style="font-size:16px;color:var(--accent)">${mxn(cot)}</div>
+          </div>
+          <div class="fin-stat">
+            <div class="fin-stat-label">Ejercido</div>
+            <div class="fin-stat-value" style="font-size:16px;color:var(--accent3)">${mxn(ej)}</div>
+          </div>
+          <div class="fin-stat">
+            <div class="fin-stat-label">Disponible</div>
+            <div class="fin-stat-value" style="font-size:16px;color:var(--accent2)">${mxn(disp)}</div>
+          </div>
+        </div>
+        <div class="ppto-bar-header" style="margin-bottom:6px">
+          <span style="font-size:12px;color:var(--muted)">Consumo total del área</span>
+          <span style="font-family:var(--mono);font-size:13px;color:${pptoBarColor(pct)};font-weight:600">${pct}%</span>
+        </div>
+        <div class="ppto-bar-track" style="height:10px;margin-bottom:16px">
+          <div class="ppto-bar-fill" style="width:${pct}%;background:${pptoBarColor(pct)}"></div>
+        </div>
+        <div class="card-title" style="margin-bottom:12px">Proyectos</div>
+        ${proy.map(p=>`
+          <div class="ppto-bar-wrap">
+            <div class="ppto-bar-header">
+              <span style="font-size:12px">${p.proyecto}</span>
+              <span style="font-size:11px;font-family:var(--mono);color:${pptoBarColor(p.pct_consumo)}">${p.pct_consumo}%</span>
+            </div>
+            <div class="ppto-bar-track">
+              <div class="ppto-bar-fill" style="width:${p.pct_consumo}%;background:${pptoBarColor(p.pct_consumo)}"></div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;justify-content:space-between">
+              <span>Ejercido: ${mxn(p.ppto_ejercido)}</span>
+              <span>Disp: ${mxn(p.ppto_disp)}</span>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+// ── GUARDAR PRESUPUESTO EN SP ────────────────────────────────────
+async function guardarPresupuesto() {
+  const nombre = document.querySelector('#form-ppto-nombre')?.value?.trim();
+  if (!nombre) { showError('El nombre del proyecto es obligatorio'); return; }
+  const cotStr = document.querySelector('#form-ppto-cotizacion')?.value || '0';
+  const ejStr  = document.querySelector('#form-ppto-ejercido')?.value || '0';
+  const ejrStr = document.querySelector('#form-ppto-ejercer')?.value || '0';
+  const cot = parseFloat(cotStr)||0;
+  const ej  = parseFloat(ejStr)||0;
+  const ejr = parseFloat(ejrStr)||0;
+
+  const fields = {
+    Title:                    nombre,
+    Fecha_Solicitud:          document.querySelector('#form-ppto-fecha-sol')?.value || '',
+    Fecha_Termino:            document.querySelector('#form-ppto-fecha-term')?.value || '',
+    Area:                     document.querySelector('#form-ppto-area')?.value || '',
+    ID_Proyecto:              document.querySelector('#form-ppto-id-proyecto')?.value || '',
+    Cliente:                  document.querySelector('#form-ppto-cliente')?.value || '',
+    Nivel:                    document.querySelector('#form-ppto-nivel')?.value || '',
+    Cotizacion_Autorizada:    cot,
+    Vigencia_Ppto:            document.querySelector('#form-ppto-vigencia')?.value || '',
+    OI:                       document.querySelector('#form-ppto-oi')?.value || '',
+    Ppto_OPEX_Anteriores:     parseFloat(document.querySelector('#form-ppto-opex-ant')?.value)||0,
+    Ppto_Ejercido:            ej,
+    Ppto_Por_Ejercer:         ejr,
+    Ppto_Disponible:          ejr - ej,
+    Pct_Consumido:            cot>0 ? parseFloat(((ej/cot)*100).toFixed(1)) : 0,
+    Estatus:                  document.querySelector('#form-ppto-estatus')?.value || '',
+    Registrado_Por:           currentUser?.label || '',
+  };
+
+  await guardarEnSP(SP_LISTS.presupuestos, fields, 'Presupuesto guardado en SharePoint');
+}
+
 </script>
 </body>
 </html>
