@@ -1,5 +1,5 @@
 // Esta es la URL de la API de SharePoint que te da el archivo limpio de forma directa:
-const urlDatos = "https://docs.google.com/uc?id=1tOpaHehOwPUQX78MXDFvfbnJVQgpqYSw&export=download";
+const urlDatos = "https://www.googleapis.com/drive/v3/files/1tOpaHehOwPUQX78MXDFvfbnJVQgpqYSw?alt=media";
 
 async function cargarTablero() {
     try {
